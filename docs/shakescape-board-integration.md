@@ -18,18 +18,22 @@ the protocol taker when another wallet accepts it; this differs from the
 site's current Alice/Bob order flow.
 
 The hsrd relay already verifies the offer ID, signature, network, and active
-window, and applies signed cancellation tombstones. It currently exposes no
-read-only cross-chain offer snapshot through its public API. Its existing
-name-market snapshot is for Handshake name listings, not BTC/HNS `DirectOffer`s.
+window, and applies signed cancellation tombstones. Its loopback wallet RPC
+already has a paged name-market snapshot, but no equivalent cross-chain offer
+snapshot. Liquidity Spot does not run hsrd: its chain watchers make optional
+HTTP transaction lookups and do not participate in Handshake P2P gossip.
 
 ## Smallest useful data path
 
 1. Add a bounded read-only cross-chain snapshot to hsrd's existing relay
-   handle. Return only offers that passed its normal `DirectOffer::verify_at`
-   admission and remain unexpired and uncancelled. Include a snapshot revision
-   or generation marker so a reader never combines different inventories.
-   Serve the snapshot through a narrowly configured HTTPS bridge for Liquidity
-   Spot; keep the P2P listener and wallet/session messages off HTTP.
+   handle and loopback wallet RPC, parallel to its name-market snapshot. Return
+   only offers that passed normal `DirectOffer::verify_at` admission and remain
+   unexpired and uncancelled. Include a snapshot revision or generation marker
+   so a reader never combines different inventories. Prefer a private
+   connection from Liquidity Spot to this RPC. If the deployments cannot share
+   a private network, put a narrow authenticated HTTPS gateway in front of
+   this one read method on the existing hsrd host. Never expose the broad wallet
+   RPC or run a second full hsrd node inside the web app.
 2. Add a server-side reader in `services/shakescape_board.py`. Its source URL is
    deployment configuration, never a request parameter. Fetch with a short
    timeout, a response-size and offer-count limit, no redirects, and a small
