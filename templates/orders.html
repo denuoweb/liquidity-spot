@@ -73,7 +73,7 @@
     <!-- Order Book -->
     <div class="md:col-span-2 bg-black/30 p-6 rounded-lg">
         <h2 class="text-2xl font-bold mb-4 text-gfa-light">Atomic Swap Order Book</h2>
-        {% if orders %}
+        <p class="mb-3 text-sm text-gfa-grey">Live ShakeScape offers appear below the Liquidity Spot orders. They are separate offers; check their current terms in ShakeScape before acting.</p>
             <div class="overflow-x-auto">
                 <table class="w-full text-left min-w-[600px]">
                     <thead>
@@ -87,6 +87,9 @@
                         </tr>
                     </thead>
                     <tbody>
+                        {% if not orders %}
+                            <tr><td colspan="6" class="p-2 text-gfa-grey">No open Liquidity Spot orders available.</td></tr>
+                        {% endif %}
                         {% for order in orders %}
                             <tr id="order-{{ order.id }}" class="border-b border-gfa-grey/10 hover:bg-white/5 {{ 'bg-white/5' if order.user_id == session.get('user_id') else '' }}">
                                 <td class="p-2 text-sm text-gfa-grey whitespace-nowrap">
@@ -122,14 +125,14 @@
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tbody id="shakescape-offer-rows" data-feed-url="{{ url_for('shakescape.external_offers') }}"></tbody>
                 </table>
             </div>
-        {% else %}
-            <p class="text-gfa-grey">No open orders available.</p>
-        {% endif %}
+        <p id="shakescape-offer-status" class="mt-3 text-xs text-gfa-grey" aria-live="polite">Checking ShakeScape offers…</p>
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/shakescape-offers.js') }}" defer></script>
 <script>
     function useMarketPrice() {
         const price = parseFloat("{{ '%.12f'|format(current_price) }}");
