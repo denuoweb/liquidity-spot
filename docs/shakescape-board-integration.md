@@ -177,14 +177,19 @@ Liquidity Spot's bounded projection; it never calls the relay RPC directly.
 `SHAKESCAPE_NAME_BOARD_FEED_URL` may override the source URL. If it is unset
 and `SHAKESCAPE_BOARD_FEED_URL` ends in
 `/api/v1/shakescape/direct-offers`, the name URL is derived on the same host.
-The canonical v1 name-offer URI is
+The canonical v1 name-offer app URI is
 `shakescape://name-offer/v1/{offer_id}?network={network}`, where `offer_id` is
 exactly 64 lowercase hexadecimal characters, not all zero, and `network` is
 exactly `mainnet`, `testnet`, or `regtest`. Both app recipients reject
 noncanonical encodings, extra parameters, and links for a different selected
-network. A link only opens a current-offer readback and review; the wallet
+network. The URI is a pointer to a listing, not a signed offer, payment
+instruction, or authorization. A link only opens a current-offer readback and review; the wallet
 rechecks the signed proof and current lock again when purchase is prepared.
 The site's default `SHAKESCAPE_NAME_OFFER_URI_TEMPLATE` uses that contract;
-set it to an empty value to disable links during a staged app rollout. The
-listing ID remains copyable for the app's "Accept by listing ID" lookup.
-Name listings remain advertisements, not reserved purchases.
+only that exact template is accepted, or set it to an empty value to disable
+links during a staged app rollout. The board's primary copy action copies the
+full app URI, including the network; a separate action copies the listing ID
+for the app's "Accept by listing ID" lookup. The link's custom scheme can be
+claimed by other installed apps, so the recipient must treat every URI as
+untrusted input and obtain current terms itself. Name listings remain
+advertisements, not reserved purchases.

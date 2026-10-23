@@ -40,16 +40,20 @@
         id.textContent = `Listing ID: ${offer.offer_id}`;
         action.appendChild(id);
         if (navigator.clipboard?.writeText) {
-            const copy = document.createElement('button');
-            copy.type = 'button';
-            copy.className = 'mt-1 text-xs text-gfa-light underline';
-            copy.textContent = 'Copy listing ID';
-            copy.addEventListener('click', () => {
-                navigator.clipboard.writeText(offer.offer_id)
-                    .then(() => { copy.textContent = 'Copied'; })
-                    .catch(() => { copy.textContent = 'Select the ID above'; });
-            });
-            action.appendChild(copy);
+            const copy = (label, value) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'mt-1 mr-3 text-xs text-gfa-light underline';
+                button.textContent = label;
+                button.addEventListener('click', () => {
+                    navigator.clipboard.writeText(value)
+                        .then(() => { button.textContent = 'Copied'; })
+                        .catch(() => { button.textContent = 'Copy failed'; });
+                });
+                action.appendChild(button);
+            };
+            if (offer.offer_uri) copy('Copy app link', offer.offer_uri);
+            copy('Copy listing ID', offer.offer_id);
         }
         rows.appendChild(row);
     };

@@ -85,11 +85,25 @@ class ShakescapeNameBoardTests(unittest.TestCase):
         malformed = [{**good, 'network': 'mainnet'},
                      {**good, 'generated_at': now - 31},
                      snapshot(now, good['offers'] * 2),
-                     snapshot(now, [{**good['offers'][0], 'name': '<script>'}])]
+                     snapshot(now, [{**good['offers'][0], 'name': '<script>'}]),
+                     snapshot(now, [{**good['offers'][0], 'offer_id': '0' * 64}])]
         for candidate in malformed:
             with self.subTest(candidate=candidate), self.assertRaises(
                     shakescape_name_board.BoardUnavailable):
                 shakescape_name_board._normalize(candidate, 'regtest', '', now)
+
+    def test_name_link_uses_only_the_app_recipient_contract(self):
+        now = int(time.time())
+        data = snapshot(now)
+        canonical = 'shakescape://name-offer/v1/{offer_id}?network={network}'
+        offer = shakescape_name_board._normalize(data, 'regtest', canonical, now)['offers'][0]
+        self.assertEqual(offer['offer_uri'],
+                         'shakescape://name-offer/v1/' + 'ab' * 32 + '?network=regtest')
+        for template in ('', 'shakescape://other/v1/{offer_id}?network={network}',
+                         'https://example.com/{offer_id}?network={network}'):
+            with self.subTest(template=template):
+                disabled = shakescape_name_board._normalize(data, 'regtest', template, now)
+                self.assertIsNone(disabled['offers'][0]['offer_uri'])
 
     def test_missing_name_feed_leaves_order_book_available(self):
         result = self.client.get('/api/external-offers/shakescape/names')

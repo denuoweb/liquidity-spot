@@ -5,7 +5,7 @@ import threading
 import time
 from decimal import Decimal
 
-from services.shakescape_board import BoardUnavailable, _offer_uri, _read_response
+from services.shakescape_board import BoardUnavailable, _read_response
 
 
 MAX_NAME_OFFERS = 100
@@ -13,6 +13,7 @@ MAX_FEED_AGE_SECONDS = 30
 CACHE_SECONDS = 10
 HEX_32 = re.compile(r'^[0-9a-f]{64}$')
 HEX_33 = re.compile(r'^[0-9a-f]{66}$')
+CANONICAL_NAME_OFFER_URI_TEMPLATE = 'shakescape://name-offer/v1/{offer_id}?network={network}'
 NAME = re.compile(r'^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$')
 AMOUNT = re.compile(r'^(?:0|[1-9][0-9]{0,19})$')
 MAX_DOLLARYDOOS = 2**64 - 1
@@ -33,6 +34,13 @@ def _amount(value, *, positive):
             or int(value) > MAX_DOLLARYDOOS or (positive and value == '0')):
         raise BoardUnavailable('Invalid name-feed amount')
     return Decimal(value) / Decimal(1_000_000)
+
+
+def _name_offer_uri(template, offer_id, network):
+    # Keep emitted and copied URIs identical to the app recipients' strict v1 parser.
+    if template != CANONICAL_NAME_OFFER_URI_TEMPLATE:
+        return None
+    return template.format(offer_id=offer_id, network=network)
 
 
 def _normalize(data, expected_network, uri_template, now):
@@ -63,7 +71,8 @@ def _normalize(data, expected_network, uri_template, now):
         offer_id = row['offer_id']
         signer = row['seller_public_key']
         name = row['name']
-        if not isinstance(offer_id, str) or not HEX_32.fullmatch(offer_id) or offer_id in seen:
+        if (not isinstance(offer_id, str) or not HEX_32.fullmatch(offer_id)
+                or offer_id == '0' * 64 or offer_id in seen):
             raise BoardUnavailable('Invalid or duplicate name-offer ID')
         if not isinstance(signer, str) or not HEX_33.fullmatch(signer):
             raise BoardUnavailable('Invalid name-offer signer')
@@ -84,7 +93,7 @@ def _normalize(data, expected_network, uri_template, now):
             'price_hns': format(price, 'f'),
             'marketplace_fee_hns': format(fee, 'f'),
             'expires_at': offer_expires_at,
-            'offer_uri': _offer_uri(uri_template, offer_id, expected_network),
+            'offer_uri': _name_offer_uri(uri_template, offer_id, expected_network),
         })
     return {
         'schema_version': 1,
