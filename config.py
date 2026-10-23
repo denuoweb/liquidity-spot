@@ -33,8 +33,14 @@ class Config:
     HNS_WATCHER_BASE_URL = os.environ.get('HNS_WATCHER_BASE_URL')
     ATOMIC_SWAP_NETWORK = os.environ.get('ATOMIC_SWAP_NETWORK', 'main')
     SHAKESCAPE_BOARD_FEED_URL = os.environ.get('SHAKESCAPE_BOARD_FEED_URL', '')
+    SHAKESCAPE_NAME_BOARD_FEED_URL = os.environ.get(
+        'SHAKESCAPE_NAME_BOARD_FEED_URL',
+        SHAKESCAPE_BOARD_FEED_URL.removesuffix('/direct-offers') + '/name-offers'
+        if SHAKESCAPE_BOARD_FEED_URL.endswith('/api/v1/shakescape/direct-offers') else '',
+    )
     SHAKESCAPE_BOARD_NETWORK = os.environ.get('SHAKESCAPE_BOARD_NETWORK', 'mainnet')
     SHAKESCAPE_OFFER_URI_TEMPLATE = os.environ.get('SHAKESCAPE_OFFER_URI_TEMPLATE', '')
+    SHAKESCAPE_NAME_OFFER_URI_TEMPLATE = os.environ.get('SHAKESCAPE_NAME_OFFER_URI_TEMPLATE', '')
     ALLOW_EXTERNAL_HTTP = True
 
 class DevelopmentConfig(Config):

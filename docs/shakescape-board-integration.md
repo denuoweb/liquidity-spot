@@ -155,3 +155,29 @@ existing `/orders` creation and acceptance, local order display, and
 `/api/channel` payloads still behave as before. Enable live links only after
 both recipients demonstrate an exact-offer readback and a cancellation/expiry
 check on the target network.
+
+## Name offer board
+
+The same opt-in `hsrd` board listener also serves
+`GET /api/v1/shakescape/name-offers`. It returns at most 100 active,
+signature-verified, uncancelled HIP-0001/Shakedex name advertisements from the
+existing relay adapter. The public response includes a listing ID, seller
+public key, canonical name, price and marketplace fee in integer HNS base
+units, and creation and expiry times. The relay does not verify the current
+name coin for a public snapshot. ShakeScape must reacquire the exact listing
+and verify its lock against the current chain before preparing a purchase.
+
+Liquidity Spot reads that feed through
+`GET /api/external-offers/shakescape/names`, validates its network, freshness,
+shape, amounts, IDs and expiry, then renders a separate name board under the
+existing atomic order table. Feed failure clears those rows and does not block
+the HNS/BTC board or local Liquidity Spot orders. The browser receives only
+Liquidity Spot's bounded projection; it never calls the relay RPC directly.
+
+`SHAKESCAPE_NAME_BOARD_FEED_URL` may override the source URL. If it is unset
+and `SHAKESCAPE_BOARD_FEED_URL` ends in
+`/api/v1/shakescape/direct-offers`, the name URL is derived on the same host.
+Keep `SHAKESCAPE_NAME_OFFER_URI_TEMPLATE` empty until ShakeScape Android, iOS,
+and the extension all accept one versioned name-offer URI with exact network
+and listing-ID validation. Until then, the site displays a copyable listing
+ID. Name listings remain advertisements, not reserved purchases.
