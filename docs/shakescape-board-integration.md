@@ -1,84 +1,195 @@
-# ShakeScape board on Liquidity Spot
+# ShakeScape offer links in the Liquidity Spot order book
 
-## Goal and current boundary
+## Scope
 
-Show live, signed HNS/BTC ShakeScape offers on Liquidity Spot without presenting
-them as Liquidity Spot orders. The first integration is read-only. A visitor can
-inspect terms and the offer ID, then use ShakeScape to act on the offer. The site
-must not create a local `Order` or `Swap`, reserve funds, or claim that its
-`/orders/<id>/accept` flow can accept a ShakeScape offer.
+Append externally sourced ShakeScape HNS/BTC offers as clearly marked rows in
+the existing `/orders` book. Each row displays the signed offer's whole HNS
+amount, BTC total, derived BTC/HNS price, side, short signer fingerprint, and
+offer ID. Its only action is a link to the exact offer in ShakeScape when the
+mobile app and extension support one canonical offer URI. Until that URI is
+implemented and configured, the row displays a copyable offer ID without an
+action link.
 
-Today `/orders` and `/api/channel` read open rows from Liquidity Spot's `Order`
-table. Those rows have a site user ID and are accepted through a site-owned swap
-room. ShakeScape instead gossips `DirectOffer` objects between authenticated
-peers. A `DirectOffer` has a signed offer ID, network binding, exact offered and
-received assets and base-unit amounts, and an expiry. It is indivisible: a
-displayed price level must not imply a partial fill. Its offer setter becomes
-the protocol taker when another wallet accepts it; this differs from the
-site's current Alice/Bob order flow.
+Liquidity Spot's existing `Order` rows, create form, `/orders/<int:order_id>/accept`
+flow, `Swap` records, and `/api/channel` v1 are unchanged. A ShakeScape row
+never becomes a local order or opens a Liquidity Spot swap room. The recipient
+app or extension must re-fetch and verify the current signed offer before
+showing any acceptance flow. No website-provider wallet bridge is required for
+this first integration.
 
-The hsrd relay already verifies the offer ID, signature, network, and active
-window, and applies signed cancellation tombstones. Its loopback wallet RPC
-has a paged name-market snapshot, but that route requires the wallet index
-profile and is unavailable on a relay-only node. There is no cross-chain offer
-snapshot. Liquidity Spot does not run hsrd: its chain watchers make optional
-HTTP transaction lookups and do not participate in Handshake P2P gossip.
+## Data flow
 
-## Smallest useful data path
+```text
+ShakeScape wallets <-> existing hsrd raw Handshake/ShakeScape P2P relay
+                         -> verified, in-memory direct-offer board
+                         -> opt-in, read-only HTTP snapshot on loopback
+                         -> HTTPS reverse proxy for remote site deployments
+                         -> Liquidity Spot server-side reader and short cache
+       -> GET /api/external-offers/shakescape
+       -> external rows appended to /orders after the local book renders
+       -> canonical offer URI -> ShakeScape app or extension
+```
 
-1. Add a bounded read-only cross-chain snapshot to hsrd's existing relay
-   handle, parallel to its name-market snapshot. Serve it through one new
-   read-only route on hsrd's existing loopback HTTP RPC listener, independently
-   of the wallet index profile. Return only offers that passed normal
-   `DirectOffer::verify_at` admission and remain unexpired and uncancelled.
-   Include a snapshot revision or generation marker so a reader never combines
-   different inventories. Prefer a private connection from Liquidity Spot to
-   this route. If the deployments cannot share a private network, put a narrow
-   authenticated HTTPS gateway in front of this one route on the existing hsrd
-   host. Never expose the broad wallet RPC or run a second full hsrd node
-   inside the web app.
-2. Add a server-side reader in `services/shakescape_board.py`. Its source URL is
-   deployment configuration, never a request parameter. Fetch with a short
-   timeout, a response-size and offer-count limit, no redirects, and a small
-   cache. Reject malformed JSON, an unexpected mainnet binding, duplicate IDs,
-   impossible amounts, and expired offers. If the feed fails or becomes stale,
-   show the board as temporarily unavailable rather than reusing old offers as
-   active listings. No browser request goes directly to the relay.
-3. Normalize each row to a display-only `ExternalOffer` with source
-   `shakescape`, lowercase hex `offer_id`, exact HNS/BTC base-unit amounts,
-   signer identity fingerprint, creation and expiry times, and feed timestamp.
-   Convert HNS and BTC with their respective chain units using decimal
-   arithmetic. If HNS is offered, label the side **sell HNS**; if HNS is
-   received, label it **buy HNS**. Show the exact BTC total and derived BTC/HNS
-   price, and state that the amount is one whole offer.
-4. Add a separate public `/shakescape` board page and a versioned
-   `/api/external-offers/shakescape` read endpoint. Link to the page from
-   `/orders`, but leave the local order table, `POST /orders`,
-   `/orders/<int:order_id>/accept`, and the current `/api/channel` v1 payload
-   unchanged. Use an offer ID route only for read-only detail; it must not
-   resolve a local integer `Order` ID. The initial action is **Open
-   ShakeScape**, with a copyable offer ID and instructions to check the current
-   terms in the app. Add a direct offer link only after the mobile app supports a
-   canonical offer URI and re-verifies that exact offer on open.
+### Relay deployment choice
 
-An accepted offer may still be advertised briefly by a relay, so the site
-should call a row **advertised on the board**, not **reserved** or **available
-to settle**. ShakeScape remains the authority for current offer terms,
-acceptance, wallet approval, and settlement. No private swap-session messages,
-addresses, keys, or transaction history enter the public feed.
+Reuse the **same `hsrd` process that receives ShakeScape offers**. Its current
+`--rpc-bind` listener already speaks HTTP but includes administrative and wallet
+routes; keep it authenticated and bound to loopback. Its public P2P listener
+speaks raw Handshake/ShakeScape TCP, not HTTP. The opt-in argument
+`--shakescape-board-http-bind 127.0.0.1:12039` starts a **separate**,
+loopback-only HTTP listener. It serves only a bounded `GET` snapshot from the
+existing verified direct-offer board; it does not mount the general RPC router
+or accept offer submissions, takes, or session messages. Default is disabled.
+The feed itself does not need a wallet index or active-state chain connection.
+If an existing `hsrd` already has a wallet index, keep its stored index profile
+when updating that process; removing indexed components from an existing data
+directory is rejected. A new relay-only deployment may use a separate data
+directory without a wallet index.
+An exact-path HTTPS reverse proxy on that host can publish the snapshot to
+Liquidity Spot even when the two services run on different machines. Rate
+limit and bound responses at the proxy as well as in `hsrd`. The public path
+and hostname are deployment choices, not a requirement to share the
+`status.learnhns.com` web server.
 
-## Verification before enabling the page
+A second small `hsrd` is a fallback only when the existing node cannot run the
+ShakeScape relay profile or its operator cannot expose the narrow HTTPS path.
+It needs its own P2P/federation link, board cache, monitoring, and reconciliation;
+merely running it on the Liquidity Spot server does not make the boards identical.
+For a local preview while the existing wallet-index node stays online, an
+updated sidecar may connect to that node's raw P2P listener and use a **different**
+data directory and ports. This is a temporary preview arrangement; the normal
+deployment puts the narrow HTTP listener on the offer-receiving relay itself.
+First verify the operator's running binary and flags: an ordinary Handshake
+node, or `hsrd` without its ShakeScape cross-chain role, has no direct-offer
+board to publish. The existing relay board is process-local and can be empty
+after restart until peers reconnect and reconcile.
 
-- A valid HNS-for-BTC and BTC-for-HNS offer display with the correct side,
-  exact amounts, decimal price, network, expiry, and source identity.
-- Cancellation, expiry, and feed loss remove or disable the row promptly;
-  malformed, cross-network, and duplicate offers never render as active.
-- An external offer ID cannot reach the local order acceptance or site swap
-  creation routes. Existing `/orders` and `/api/channel` v1 tests still pass.
-- Bounded feed reads do not block ordinary P2P browsing when the bridge is
-  offline. Review the actual page labels and links on desktop and mobile.
+The dedicated feed returns only public offer fields. Liquidity Spot never
+accepts a feed URL from a visitor. Its browser fetches Liquidity Spot's read
+endpoint after the existing book renders and refreshes every 10 seconds, so a
+slow or missing relay feed does not delay the local order form and rows. Feed
+failure removes external offers and reports them as unavailable without
+affecting site orders.
 
-Build the hsrd snapshot and its feed contract first, then the Liquidity Spot
-reader and page against a fixed snapshot fixture. Turn on the page only after
-the deployed feed passes a live readback with at least one known signed offer
-and a cancellation/expiry check.
+## Feed contract, version 1
+
+The source `hsrd` listener and Liquidity Spot reader implement the following
+contract. Live rows require an updated running node with cross-chain relay
+peers and current offers. The reader expects one JSON document with Unix
+seconds and decimal-string integer base units:
+
+```json
+{
+  "schema_version": 1,
+  "network": "mainnet",
+  "revision": "opaque-consistent-snapshot-id",
+  "generated_at": 1790000000,
+  "expires_at": 1790000020,
+  "offers": [
+    {
+      "offer_id": "<64 lowercase hex>",
+      "signer_public_key": "<66 lowercase hex>",
+      "offered_asset": "HNS",
+      "offered_amount_base_units": "100000000",
+      "received_asset": "BTC",
+      "received_amount_base_units": "50000",
+      "created_at": 1789999990,
+      "expires_at": 1790000600
+    }
+  ]
+}
+```
+
+The relay must include only offers that passed canonical signature, offer-ID,
+network, expiry, and cancellation checks. Liquidity Spot also rejects a wrong
+network, stale or oversized snapshot, more than 100 offers, duplicate or
+malformed IDs, invalid signers, impossible pair or amounts, and expired rows.
+It converts HNS with 1,000,000 base units per coin and BTC with 100,000,000
+satoshis per coin using decimal arithmetic. An offer *offering* HNS displays
+**sell HNS**; an offer *receiving* HNS displays **buy HNS**. The price is for
+display only. The signed pair is one indivisible offer, with no partial fill.
+
+An accepted offer may remain advertised briefly. Call it **advertised on the
+board**, not **reserved** or **available to settle**. The app or extension owns
+the live acceptance and settlement decision.
+
+## Offer URI handoff
+
+The mobile app currently handles `handshake:` payment URIs; no canonical
+ShakeScape offer URI was found in the checked-in mobile or extension source.
+Define a single versioned URI contract for both recipients before setting
+`SHAKESCAPE_OFFER_URI_TEMPLATE`. It must carry the exact 32-byte offer ID and
+network, reject malformed or cross-network IDs, and make the recipient fetch
+and verify the live offer. A link must never mean that the offer is reserved or
+accepted. The site's template is fixed deployment configuration with one
+`{offer_id}` and one `{network}` placeholder; no feed row or request parameter
+may supply a URL.
+
+## Local configuration and release checks
+
+- `SHAKESCAPE_BOARD_FEED_URL`: HTTPS snapshot endpoint, or loopback HTTP for
+  same-machine local preview; empty means the feed is unavailable.
+- `SHAKESCAPE_BOARD_NETWORK`: expected `mainnet` or `regtest` binding.
+- `SHAKESCAPE_OFFER_URI_TEMPLATE`: blank until the app and extension handle the
+  same exact offer URI; only configured HTTPS or `shakescape:` templates produce
+  links.
+
+For a same-machine preview, start an updated mainnet `hsrd` with the cross-chain
+relay role and `--shakescape-board-http-bind 127.0.0.1:12039`, then run
+`python -m venv .venv` and `.venv/bin/python -m pip install -r requirements-lock.txt`
+in the site checkout, followed by `scripts/run-shakescape-preview.sh`. The script uses a
+separate ignored SQLite database, so the preview does not load existing live
+Liquidity Spot orders. Visit `http://127.0.0.1:8000/orders`. The feed may be
+empty until the relay has reachable offer owners; it never creates demo offers.
+Use the managed node's existing data directory with only one `hsrd` process at
+a time; starting another process against the same directory is not a preview
+strategy.
+The preview script serves only on `127.0.0.1:8000`; it needs the phone's signed
+offer to reach the relay's P2P board before a row appears. A wallet's locally
+stored active offer alone is not proof that the relay currently has a reachable
+offer owner. The page refreshes the external rows every 10 seconds.
+
+Test HNS-for-BTC and BTC-for-HNS rows, exact base-unit conversion, cancellation,
+expiry, stale and malformed feed, duplicate IDs, and feed loss. Confirm that
+existing `/orders` creation and acceptance, local order display, and
+`/api/channel` payloads still behave as before. Enable live links only after
+both recipients demonstrate an exact-offer readback and a cancellation/expiry
+check on the target network.
+
+## Name offer board
+
+The same opt-in `hsrd` board listener also serves
+`GET /api/v1/shakescape/name-offers`. It returns at most 100 active,
+signature-verified, uncancelled HIP-0001/Shakedex name advertisements from the
+existing relay adapter. The public response includes a listing ID, seller
+public key, canonical name, price and marketplace fee in integer HNS base
+units, and creation and expiry times. The relay does not verify the current
+name coin for a public snapshot. ShakeScape must reacquire the exact listing
+and verify its lock against the current chain before preparing a purchase.
+
+Liquidity Spot reads that feed through
+`GET /api/external-offers/shakescape/names`, validates its network, freshness,
+shape, amounts, IDs and expiry, then renders a separate name board under the
+existing atomic order table. Feed failure clears those rows and does not block
+the HNS/BTC board or local Liquidity Spot orders. The browser receives only
+Liquidity Spot's bounded projection; it never calls the relay RPC directly.
+
+`SHAKESCAPE_NAME_BOARD_FEED_URL` may override the source URL. If it is unset
+and `SHAKESCAPE_BOARD_FEED_URL` ends in
+`/api/v1/shakescape/direct-offers`, the name URL is derived on the same host.
+The canonical v1 name-offer app URI is
+`shakescape://name-offer/v1/{offer_id}?network={network}`, where `offer_id` is
+exactly 64 lowercase hexadecimal characters, not all zero, and `network` is
+exactly `mainnet`, `testnet`, or `regtest`. Both app recipients reject
+noncanonical encodings, extra parameters, and links for a different selected
+network. The URI is a pointer to a listing, not a signed offer, payment
+instruction, or authorization. A link only opens a current-offer readback and review; the wallet
+rechecks the signed proof and current lock again when purchase is prepared.
+The site's default `SHAKESCAPE_NAME_OFFER_URI_TEMPLATE` uses that contract;
+only that exact template is accepted, or set it to an empty value to disable
+links during a staged app rollout. The board's primary copy action copies the
+full app URI, including the network; a separate action copies the listing ID
+for the app's "Accept by listing ID" lookup. The link's custom scheme can be
+claimed by other installed apps, so the recipient must treat every URI as
+untrusted input and obtain current terms itself. Name listings remain
+advertisements, not reserved purchases.
