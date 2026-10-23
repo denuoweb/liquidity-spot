@@ -180,4 +180,5 @@ and `SHAKESCAPE_BOARD_FEED_URL` ends in
 Keep `SHAKESCAPE_NAME_OFFER_URI_TEMPLATE` empty until ShakeScape Android, iOS,
 and the extension all accept one versioned name-offer URI with exact network
 and listing-ID validation. Until then, the site displays a copyable listing
-ID. Name listings remain advertisements, not reserved purchases.
+ID for the app's "Accept by listing ID" action. Name listings remain
+advertisements, not reserved purchases.
