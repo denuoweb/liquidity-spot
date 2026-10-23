@@ -91,6 +91,10 @@ class ShakescapeNameBoardTests(unittest.TestCase):
             with self.subTest(candidate=candidate), self.assertRaises(
                     shakescape_name_board.BoardUnavailable):
                 shakescape_name_board._normalize(candidate, 'regtest', '', now)
+        with self.assertRaises(shakescape_name_board.BoardUnavailable):
+            shakescape_name_board._normalize(
+                {**good, 'network': 'unsupported'}, 'unsupported',
+                shakescape_name_board.CANONICAL_NAME_OFFER_URI_TEMPLATE, now)
 
     def test_name_link_uses_only_the_app_recipient_contract(self):
         now = int(time.time())

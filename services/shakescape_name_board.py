@@ -14,6 +14,7 @@ CACHE_SECONDS = 10
 HEX_32 = re.compile(r'^[0-9a-f]{64}$')
 HEX_33 = re.compile(r'^[0-9a-f]{66}$')
 CANONICAL_NAME_OFFER_URI_TEMPLATE = 'shakescape://name-offer/v1/{offer_id}?network={network}'
+NAME_OFFER_NETWORKS = frozenset(('mainnet', 'testnet', 'regtest'))
 NAME = re.compile(r'^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$')
 AMOUNT = re.compile(r'^(?:0|[1-9][0-9]{0,19})$')
 MAX_DOLLARYDOOS = 2**64 - 1
@@ -44,6 +45,8 @@ def _name_offer_uri(template, offer_id, network):
 
 
 def _normalize(data, expected_network, uri_template, now):
+    if expected_network not in NAME_OFFER_NETWORKS:
+        raise BoardUnavailable('Unsupported name-feed network')
     if not isinstance(data, dict) or data.get('schema_version') != 1 or type(data.get('schema_version')) is not int:
         raise BoardUnavailable('Unexpected name-feed schema')
     if data.get('network') != expected_network:
