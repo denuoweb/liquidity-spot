@@ -40,7 +40,10 @@ class Config:
     )
     SHAKESCAPE_BOARD_NETWORK = os.environ.get('SHAKESCAPE_BOARD_NETWORK', 'mainnet')
     SHAKESCAPE_OFFER_URI_TEMPLATE = os.environ.get('SHAKESCAPE_OFFER_URI_TEMPLATE', '')
-    SHAKESCAPE_NAME_OFFER_URI_TEMPLATE = os.environ.get('SHAKESCAPE_NAME_OFFER_URI_TEMPLATE', '')
+    SHAKESCAPE_NAME_OFFER_URI_TEMPLATE = os.environ.get(
+        'SHAKESCAPE_NAME_OFFER_URI_TEMPLATE',
+        'shakescape://name-offer/v1/{offer_id}?network={network}',
+    )
     ALLOW_EXTERNAL_HTTP = True
 
 class DevelopmentConfig(Config):

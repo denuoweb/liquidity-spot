@@ -60,7 +60,7 @@ class ShakescapeNameBoardTests(unittest.TestCase):
         now = int(time.time())
         self.app.config.update(
             SHAKESCAPE_NAME_BOARD_FEED_URL='https://feed.example/name-offers',
-            SHAKESCAPE_NAME_OFFER_URI_TEMPLATE='shakescape://name-offer/{offer_id}?network={network}',
+            SHAKESCAPE_NAME_OFFER_URI_TEMPLATE='shakescape://name-offer/v1/{offer_id}?network={network}',
         )
         with patch('services.shakescape_board.http_get',
                    return_value=FeedResponse(snapshot(now))):
@@ -72,7 +72,7 @@ class ShakescapeNameBoardTests(unittest.TestCase):
         self.assertEqual(offer['price_hns'], '1')
         self.assertEqual(offer['marketplace_fee_hns'], '0.05')
         self.assertEqual(offer['offer_uri'],
-                         'shakescape://name-offer/' + 'ab' * 32 + '?network=regtest')
+                         'shakescape://name-offer/v1/' + 'ab' * 32 + '?network=regtest')
         with self.app.app_context():
             self.assertEqual(Order.query.count(), 0)
         page = self.client.get('/orders').get_data(as_text=True)
