@@ -69,7 +69,7 @@ class ShakescapeBoardTests(unittest.TestCase):
         now = int(time.time())
         self.app.config.update(
             SHAKESCAPE_BOARD_FEED_URL='https://feed.example/offers',
-            SHAKESCAPE_OFFER_URI_TEMPLATE='shakescape://offer/{offer_id}?network={network}',
+            SHAKESCAPE_OFFER_URI_TEMPLATE=shakescape_board.CANONICAL_COIN_OFFER_URI_TEMPLATE,
         )
         with patch('services.shakescape_board.http_get', return_value=FeedResponse(snapshot(now))):
             result = self.client.get('/api/external-offers/shakescape')
@@ -80,7 +80,7 @@ class ShakescapeBoardTests(unittest.TestCase):
         self.assertEqual(offer['amount_hns'], '100')
         self.assertEqual(offer['total_btc'], '0.0005')
         self.assertEqual(offer['price_btc_per_hns'], '0.000005')
-        self.assertEqual(offer['offer_uri'], f'shakescape://offer/{OFFER_ID}?network=regtest')
+        self.assertEqual(offer['offer_uri'], f'shakescape://coin-offer/v1/{OFFER_ID}?network=regtest')
         with self.app.app_context():
             self.assertEqual(Order.query.count(), 0)
         page = self.client.get('/orders').get_data(as_text=True)
@@ -88,7 +88,7 @@ class ShakescapeBoardTests(unittest.TestCase):
         self.assertIn('shakescape-offer-rows', page)
         self.assertIn('No open Liquidity Spot orders available.', page)
 
-    def test_buy_side_and_no_uri_until_recipient_supports_it(self):
+    def test_buy_side_and_disabled_uri(self):
         now = int(time.time())
         item = snapshot(now)['offers'][0]
         item.update(
@@ -100,6 +100,27 @@ class ShakescapeBoardTests(unittest.TestCase):
         self.assertEqual(value['offers'][0]['amount_hns'], '25')
         self.assertEqual(value['offers'][0]['total_btc'], '0.00075')
         self.assertIsNone(value['offers'][0]['offer_uri'])
+
+    def test_coin_link_uses_only_the_app_recipient_contract(self):
+        now = int(time.time())
+        data = snapshot(now)
+        canonical = shakescape_board.CANONICAL_COIN_OFFER_URI_TEMPLATE
+        offer = shakescape_board._normalize(data, 'regtest', canonical, now)['offers'][0]
+        self.assertEqual(offer['offer_uri'],
+                         'shakescape://coin-offer/v1/' + OFFER_ID + '?network=regtest')
+        for template in ('', 'shakescape://offer/{offer_id}?network={network}'):
+            with self.subTest(template=template):
+                disabled = shakescape_board._normalize(data, 'regtest', template, now)
+                self.assertIsNone(disabled['offers'][0]['offer_uri'])
+        legacy_https = 'https://example.com/{offer_id}?network={network}'
+        self.assertEqual(
+            shakescape_board._normalize(data, 'regtest', legacy_https, now)['offers'][0]['offer_uri'],
+            'https://example.com/' + OFFER_ID + '?network=regtest',
+        )
+        with self.assertRaises(shakescape_board.BoardUnavailable):
+            shakescape_board._normalize(
+                snapshot(now, [{**data['offers'][0], 'offer_id': '0' * 64}]),
+                'regtest', canonical, now)
 
     def test_stale_duplicate_and_wrong_network_feeds_fail_closed(self):
         now = int(time.time())

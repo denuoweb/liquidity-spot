@@ -5,15 +5,14 @@
 Append externally sourced ShakeScape HNS/BTC offers as clearly marked rows in
 the existing `/orders` book. Each row displays the signed offer's whole HNS
 amount, BTC total, derived BTC/HNS price, side, short signer fingerprint, and
-offer ID. Its only action is a link to the exact offer in ShakeScape when the
-mobile app and extension support one canonical offer URI. Until that URI is
-implemented and configured, the row displays a copyable offer ID without an
-action link.
+offer ID. Its actions open the exact offer in ShakeScape and copy either the
+canonical app URI or offer ID. The Android and iOS recipients recognize the
+versioned URI and read current signed terms before a swap review.
 
 Liquidity Spot's existing `Order` rows, create form, `/orders/<int:order_id>/accept`
 flow, `Swap` records, and `/api/channel` v1 are unchanged. A ShakeScape row
 never becomes a local order or opens a Liquidity Spot swap room. The recipient
-app or extension must re-fetch and verify the current signed offer before
+app must re-fetch and verify the current signed offer before
 showing any acceptance flow. No website-provider wallet bridge is required for
 this first integration.
 
@@ -27,7 +26,7 @@ ShakeScape wallets <-> existing hsrd raw Handshake/ShakeScape P2P relay
                          -> Liquidity Spot server-side reader and short cache
        -> GET /api/external-offers/shakescape
        -> external rows appended to /orders after the local book renders
-       -> canonical offer URI -> ShakeScape app or extension
+       -> canonical offer URI -> ShakeScape Android or iOS app
 ```
 
 ### Relay deployment choice
@@ -110,29 +109,34 @@ satoshis per coin using decimal arithmetic. An offer *offering* HNS displays
 display only. The signed pair is one indivisible offer, with no partial fill.
 
 An accepted offer may remain advertised briefly. Call it **advertised on the
-board**, not **reserved** or **available to settle**. The app or extension owns
+board**, not **reserved** or **available to settle**. The app owns
 the live acceptance and settlement decision.
 
 ## Offer URI handoff
 
-The mobile app currently handles `handshake:` payment URIs; no canonical
-ShakeScape offer URI was found in the checked-in mobile or extension source.
-Define a single versioned URI contract for both recipients before setting
-`SHAKESCAPE_OFFER_URI_TEMPLATE`. It must carry the exact 32-byte offer ID and
-network, reject malformed or cross-network IDs, and make the recipient fetch
-and verify the live offer. A link must never mean that the offer is reserved or
-accepted. The site's template is fixed deployment configuration with one
-`{offer_id}` and one `{network}` placeholder; no feed row or request parameter
-may supply a URL.
+The canonical v1 coin-offer app URI is
+`shakescape://coin-offer/v1/{offer_id}?network={network}`. The offer ID is
+exactly 64 lowercase hexadecimal characters and is not all zero; the network
+is exactly `mainnet`, `testnet`, or `regtest`. Both apps reject alternate
+encodings, extra parameters, and links for another selected network. The URI
+is an untrusted pointer, never a signed offer, reservation, payment instruction,
+or authorization. On open, the wallet reads its own current signed board,
+requires an exact active ID match, and shows the current terms for review.
+Acceptance rechecks the offer in the wallet's native swap logic. If the wallet
+has not received the offer from its peer, the link cannot open the review yet.
+The site accepts only this exact `shakescape:` template. Previously configured
+HTTPS handoff URLs remain supported; an empty value disables links. No feed row
+or request parameter may supply a URL. A separate copy action
+copies the full URI including network; the offer ID remains copyable.
 
 ## Local configuration and release checks
 
 - `SHAKESCAPE_BOARD_FEED_URL`: HTTPS snapshot endpoint, or loopback HTTP for
   same-machine local preview; empty means the feed is unavailable.
 - `SHAKESCAPE_BOARD_NETWORK`: expected `mainnet` or `regtest` binding.
-- `SHAKESCAPE_OFFER_URI_TEMPLATE`: blank until the app and extension handle the
-  same exact offer URI; only configured HTTPS or `shakescape:` templates produce
-  links.
+- `SHAKESCAPE_OFFER_URI_TEMPLATE`: defaults to the canonical v1 coin-offer URI;
+  set empty to disable links during a staged app rollout. Existing configured
+  HTTPS handoff templates remain supported.
 
 For a same-machine preview, start an updated mainnet `hsrd` with the cross-chain
 relay role and `--shakescape-board-http-bind 127.0.0.1:12039`, then run
@@ -152,9 +156,9 @@ offer owner. The page refreshes the external rows every 10 seconds.
 Test HNS-for-BTC and BTC-for-HNS rows, exact base-unit conversion, cancellation,
 expiry, stale and malformed feed, duplicate IDs, and feed loss. Confirm that
 existing `/orders` creation and acceptance, local order display, and
-`/api/channel` payloads still behave as before. Enable live links only after
-both recipients demonstrate an exact-offer readback and a cancellation/expiry
-check on the target network.
+`/api/channel` payloads still behave as before. Before enabling links for a
+deployment, install app builds with the v1 coin-offer recipient and confirm
+exact-offer readback plus cancellation and expiry checks on the target network.
 
 ## Name offer board
 

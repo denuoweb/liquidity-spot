@@ -24,6 +24,8 @@ HEX_32 = re.compile(r'^[0-9a-f]{64}$')
 HEX_33 = re.compile(r'^[0-9a-f]{66}$')
 BASE_UNITS = {'HNS': Decimal(1_000_000), 'BTC': Decimal(100_000_000)}
 MAX_BASE_UNIT_AMOUNT = 2**128 - 1
+CANONICAL_COIN_OFFER_URI_TEMPLATE = 'shakescape://coin-offer/v1/{offer_id}?network={network}'
+COIN_OFFER_NETWORKS = frozenset(('mainnet', 'testnet', 'regtest'))
 _cache_lock = threading.Lock()
 _cache_key = None
 _cache_until = 0.0
@@ -53,18 +55,20 @@ def _plain(value):
 
 
 def _offer_uri(template, offer_id, network):
-    if not template or template.count('{offer_id}') != 1 or template.count('{network}') != 1:
+    # Custom-scheme links must match the mobile recipients exactly. Preserve
+    # previously configured HTTPS handoff pages for existing deployments.
+    if template == CANONICAL_COIN_OFFER_URI_TEMPLATE:
+        return template.format(offer_id=offer_id, network=network)
+    if (not template or template.count('{offer_id}') != 1
+            or template.count('{network}') != 1):
         return None
     url = template.replace('{offer_id}', offer_id).replace('{network}', network)
     try:
         parts = urlsplit(url)
     except ValueError:
         return None
-    if parts.scheme == 'https' and parts.hostname and not parts.username and not parts.password:
-        return url
-    if parts.scheme == 'shakescape' and (parts.netloc or parts.path) and not parts.fragment:
-        return url
-    return None
+    return url if (parts.scheme == 'https' and parts.hostname
+                   and not parts.username and not parts.password) else None
 
 
 def _read_response(url):
@@ -95,6 +99,8 @@ def _read_response(url):
 
 
 def _normalize(data, expected_network, uri_template, now):
+    if expected_network not in COIN_OFFER_NETWORKS:
+        raise BoardUnavailable('Unsupported feed network')
     if not isinstance(data, dict) or type(data.get('schema_version')) is not int or data['schema_version'] != 1:
         raise BoardUnavailable('Unexpected feed schema')
     if data.get('network') != expected_network:
@@ -119,7 +125,8 @@ def _normalize(data, expected_network, uri_template, now):
             raise BoardUnavailable('Invalid offer')
         offer_id = row.get('offer_id')
         signer = row.get('signer_public_key')
-        if not isinstance(offer_id, str) or not HEX_32.fullmatch(offer_id) or offer_id in seen:
+        if (not isinstance(offer_id, str) or not HEX_32.fullmatch(offer_id)
+                or offer_id == '0' * 64 or offer_id in seen):
             raise BoardUnavailable('Invalid or duplicate offer ID')
         if not isinstance(signer, str) or not HEX_33.fullmatch(signer):
             raise BoardUnavailable('Invalid offer signer')

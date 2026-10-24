@@ -13,7 +13,8 @@ mkdir -p instance
 export DATABASE_URL="sqlite:////${project_dir#/}/instance/shakescape-preview.sqlite"
 export SHAKESCAPE_BOARD_FEED_URL="${SHAKESCAPE_BOARD_FEED_URL:-http://127.0.0.1:12039/api/v1/shakescape/direct-offers}"
 export SHAKESCAPE_BOARD_NETWORK="${SHAKESCAPE_BOARD_NETWORK:-mainnet}"
-export SHAKESCAPE_OFFER_URI_TEMPLATE="${SHAKESCAPE_OFFER_URI_TEMPLATE:-}"
+coin_offer_uri_default='shakescape://coin-offer/v1/{offer_id}?network={network}'
+export SHAKESCAPE_OFFER_URI_TEMPLATE="${SHAKESCAPE_OFFER_URI_TEMPLATE-$coin_offer_uri_default}"
 export FLASK_APP=run:app
 export FLASK_DEBUG=0
 export SECRET_KEY="${SECRET_KEY:-local-shakescape-preview-only}"
